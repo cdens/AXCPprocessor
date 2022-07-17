@@ -31,41 +31,29 @@ This script requires python modules other than python base. Install them with `p
       <td>End time of AXCP profile in WAV file, format: SS, MM:SS, or HH:MM:SS (default: end of WAV file)</td>
     </tr>  
     <tr>
-      <td align="center">-a</td>
-      <td>Input channel for audio file (1 for left, 2 for right, -1 to sum across all channels)</td>
+      <td align="center">-y</td>
+      <td>Latitude (N > 0) to be used for magvar calculations</td>
     </tr>  
     <tr>
-      <td align="center">-w</td>
-      <td>Window length for each FFT (sec)</td>
+      <td align="center">-x</td>
+      <td>Longitude (E > 0) to be used for magvar calculations</td>
     </tr>  
     <tr>
-      <td align="center">-m</td>
-      <td>Minimum signal level for good data (dB)</td>
+      <td align="center">-d</td>
+      <td>Date (YYYYMMDD) to be used for magvar calculations</td>
+    </tr>  
+    <tr>
+      <td align="center">-q</td>
+      <td>Processing quality (1 = high quality/slow, 2 = moderate quality/speed, 3 = lower quality/higher speed)</td>
     </tr>  
     <tr>
       <td align="center">-r</td>
-      <td>Minimum signal ratio for good data (0-1)</td>
+      <td>Whether or not probe coil was reversed (1 = true, default 0)</td>
     </tr>  
     <tr>
-      <td align="center">-a</td>
-      <td>Minimum signal level to trigger profile collection (dB)</td>
-    </tr>  
-    <tr>
-      <td align="center">-b</td>
-      <td>Minimum signal ratio to trigger profile collection</td>
-    </tr>  
-    <tr>
-      <td align="center">-t</td>
-      <td>Frequency (Hz) to temperature (degC) conversion coefficients: [C<sub>0</sub>,C<sub>1</sub>,C<sub>2</sub>,C<sub>3</sub>] where T = C<sub>0</sub> + C<sub>1</sub>*f + C<sub>2</sub>*f<sup>2</sup> + C<sub>3</sub>*f<sup>3</sup></td>
-    </tr>  
-    <tr>
-      <td align="center">-z</td>
-      <td>Time elapsed (s) to depth (m) conversion coefficients: [C<sub>0</sub>,C<sub>1</sub>,C<sub>2</sub>,C<sub>3</sub>] where z = C<sub>0</sub> + C<sub>1</sub>*t + C<sub>2</sub>*t<sup>2</sup> + C<sub>3</sub>*t<sup>3</sup></td>
-    </tr>  
-    <tr>
-      <td align="center">-f</td>
-      <td>Minimum and maximum frequencies for good AXCP data: [min_f,max_f]</td>
-    </tr>  
+      <td align="center">-p</td>
+      <td>Refresh rate (seconds) of AXCP iteration loop</td>
+    </tr>
     </tbody>
 </table>
 
