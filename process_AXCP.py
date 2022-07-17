@@ -148,7 +148,7 @@ def main():
     args = parser.parse_args()    
     
     #checking for input WAV file
-    if args.input == 'ERROR_NO_FILE_SPECIFIED':
+    if args.input == 'ERROR_NO_FILE_SPECIFIED' and not os.path.exists(args.input):
         print("[!] Error- no input WAV file specified! Terminating")
         exit()
     elif not os.path.exists(args.input):
