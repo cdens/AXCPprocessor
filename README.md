@@ -1,7 +1,5 @@
 # **AXCP Processor**
 
-#THIS CODE IS STILL IN DEVELOPMENT AND NOT YET READY FOR USE- CHECK BACK SOON :)
-
 ## Overview
 The AXCP Processor can reprocess AXCP audio (WAV) files via command line, outputting a file containing AXCP signal data (signal level, peak frequency) and observed temperature versus depth. 
 
@@ -55,6 +53,18 @@ This script requires python modules other than python base. Install them with `p
     <tr>
       <td align="center">-p</td>
       <td>Refresh rate (seconds) of AXCP iteration loop</td>
+    </tr>  
+    <tr>
+      <td align="center">-u</td>
+      <td>Whether or not to try to detect probe spindown realtime and automatically stop processing (1=yes,0=no)</td>
+    </tr>  
+    <tr>
+      <td align="center">-m</td>
+      <td>Whether to use zero crossings (1) or FFT (2) to calculate temperature at each depth</td>
+    </tr>  
+    <tr>
+      <td align="center">-w</td>
+      <td>Temperature FFT window (sec)- only applicable for temperature_mode=2, must be less than or equal to refreshrate.</td>
     </tr>
     </tbody>
 </table>

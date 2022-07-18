@@ -23,35 +23,9 @@
 import os
 import numpy as np
 from scipy import signal
+from ._AXCP_convert_fxns import calc_temp_from_freq, dataconvert
 
 
-#conversion: coefficients=C,  D_out = C[0] + C[1]*D_in + C[2]*D_in^2 + C[3]*D_in^3 + ...
-def dataconvert(data_in,coefficients):
-    
-    datatype = 1 #integer or float
-    if type(data_in) == list:
-        datatype = 2
-    elif type(data_in) == np.ndarray: #numpy array
-        dataype = 3
-        
-    if datatype == 1:
-        data_in = [data_in]
-        
-    output = []
-    for cur_data_in in data_in:
-        cur_output = 0
-        for (i,c) in enumerate(coefficients):
-            cur_output += c*cur_data_in**i
-        output.append(cur_output)
-        
-    if datatype == 1: #convert back from list to int/float
-        output = output[0]
-    elif datatype == 3: #convert to np array
-        output = np.asarray(output)
-            
-    return output
-    
-    
     
 
 
@@ -60,23 +34,40 @@ def dataconvert(data_in,coefficients):
 def init_AXCP_settings(self, settings):
 
     self.settings = {}
-    self.settings["refreshrate"] = 0.5 #size of raw audio chunks to process, in seconds
+    self.settings["refreshrate"] = 1 #size of raw audio chunks to process, in seconds
     self.settings["revcoil"]     = False #coil on AXCP reversed- rotates currents by 180 degrees
     self.settings["quality"]     = 1    #profile processing quality- 1=high/slow, 2=moderate speed/quality, 3=low/fast
     self.settings["spindown_detect_rt"] = True #realtime detection of probe spindown to avoid processing unnecessary data
+    
+    #1-use zero crossings and temperature baseline freq calculated with velocity
+    #2-use FFT (window size set by settings['tempfftwindow']) once per refresh
+    self.settings["temp_mode"] = 2 
+    self.settings["tempfftwindow"] = 1.0 #FFT window for temperature in seconds (used if temp_mode > 1) 
             
     for csetting in settings:
         self.settings[csetting] = settings[csetting] #overwrite defaults for user specified settings 
       
-    self.revcoil = self.settings["revcoil"]
+    self.revcoil = bool(self.settings["revcoil"])
+    self.spindown_detect_rt = bool(self.settings["spindown_detect_rt"])
+    
     self.quality = self.settings["quality"]
     if self.quality <= 0:
         self.quality = 1
     elif self.quality >= 4:
         self.quality = 3
     
+    self.temp_mode = self.settings["temp_mode"]
+    if self.temp_mode < 1:
+        self.temp_mode = 1
+    elif self.temp_mode > 2:
+        self.temp_mode = 2    
+
+    
     self.refreshrate = self.settings["refreshrate"]
-    self.spindown_detect_rt = self.settings["spindown_detect_rt"]
+    self.tempfftwindowsec = self.settings["tempfftwindow"]
+    
+    if self.tempfftwindowsec > self.refreshrate: #temperature FFT window length must be less than refresh rate
+        self.tempfftwindowsec = self.refreshrate
 
 
 
@@ -96,6 +87,10 @@ def initialize_AXCP_vars(self):
     elif self.quality == 3:
         self.nss1 =  5
         self.nss2 = 40
+        
+    #temperature FFT window calculation
+    self.N_temp = int(np.round(self.f_s * self.tempfftwindowsec))
+    self.init_fft_window(self.N_temp) #intialize window, frequencies, and taper 
                 
     self.fnyq1 = self.fnyq0 / self.nss1
     self.fnyq2 = self.fnyq1 / self.nss2
@@ -122,6 +117,10 @@ def initialize_AXCP_vars(self):
     self.FCCDEV  = np.array([])
     self.FROTLP  = np.array([])
     self.FROTDEV = np.array([])
+    self.TEMP_FFT = np.array([])
+    self.DEPTH_FFT = np.array([])
+    
+    
     self.TIME = np.array([])
     self.DEPTH= np.array([])
     self.TEMP = np.array([])
@@ -266,6 +265,57 @@ def init_constants(self):
     # self.inv_depth_poly = [3.11700848802192e-10,5.14227005928016e-06,0.228465938277901,-1.07390827937333]
     self.inv_depth_poly = [-1.07390827937333,0.228465938277901,5.14227005928016e-06, 3.11700848802192e-10]
 
+    
+    
+    
+    
+    
+    
+    
+def init_fft_window(self,N):
+        
+    # apply taper- alpha=0.25
+    self.flims = [200,600]
+    self.taper = signal.tukey(N, alpha=0.25)
+    
+    self.N_temp = N
+    
+    T = N/self.f_s
+    df = 1 / T
+    self.f = np.array([df * n if n < N / 2 else df * (n - N) for n in range(N)])#constraining peak frequency options to frequencies in specified band
+    self.good_f_ind = np.all((np.greater_equal(self.f, self.flims[0]), np.less_equal(self.f, self.flims[1])), axis=0)
+    
+    self.good_f = self.f[self.good_f_ind]
+    
+    
+    
+#run fft to determine peak frequency in temperature band
+def dofft(self,pcmdata):
+    
+    if self.N_temp != len(pcmdata): #correct window length and parameters if it's wrong for some reason
+        self.N_temp = len(pcmdata)
+        self.init_fft_window(self.N_temp)
+    
+    pcmdata = self.taper * pcmdata
+
+    # conducting fft, converting to real space
+    fftdata = np.abs(np.fft.fft(pcmdata))
+    fftdata_inrange = fftdata[self.good_f_ind]
+    
+    maxind = np.argmax(fftdata_inrange)
+    
+    #frequency of max signal within band (AXBT-transmitted frequency)
+    fp = self.good_f[maxind] 
+    
+    #maximum signal strength in band
+    Sp = 10*np.log10(fftdata_inrange[maxind])
+
+    #ratio of maximum signal in band to max signal total (SNR)
+    Rp = fftdata_inrange[maxind]/np.max(fftdata) 
+        
+    return fp, Sp, Rp
+    
+    
     
     
     
@@ -502,7 +552,34 @@ def iterate_AXCP_process(self, e):
             self.tspinup = tim_zc[0]
         
         print(f"[+] Spinup detected: {self.tspinup:7.2f} seconds")
+        
+    
+    #handle updated temperature FFT calculation outside of self.status - grab most recent data    
+    if self.temp_mode > 1:
+        cpcm = self.demod_buffer[-self.N_temp:] #pull proper window length of most recent pcm data
+        fp,_,_ = self.dofft(cpcm) #get peak frequency in temperature band via FFT
+        
+        if self.status:
+            cdepth_fft = dataconvert(self.T[-1]-self.tspinup, self.depth_poly) #getting depth corresponding to most recent time
+        else:
+            cdepth_fft = -999 #leave depths as -999 until spinup time can be determined and used to process
             
+        ctemp_fft = self.calc_temp_from_freq(fp,cdepth_fft) #convert peak frequency in temperature band to corresponding temperature
+    else:
+        ctemp_fft = np.NaN
+        cdepth_fft = np.NaN
+        
+    self.TEMP_FFT = np.append(self.TEMP_FFT, ctemp_fft)
+    self.DEPTH_FFT = np.append(self.DEPTH_FFT, cdepth_fft)
+    
+    
+    #if spinup has been detected but depths haven't been filled in, do that
+    if self.status and self.temp_mode > 1 and -999 in self.DEPTH_FFT:
+        for i,d in enumerate(self.DEPTH_FFT):
+            if d == -999:
+                cz = dataconvert(self.T[i]-self.tspinup, self.depth_poly)
+                self.DEPTH_FFT[i] = cz
+    
             
     #if the profile is spun up- iterate through all times available to process profile datapoints
     if self.status: 
@@ -520,7 +597,14 @@ def iterate_AXCP_process(self, e):
                 self.nff += 1 #iterate profile datapoint counter
                 
                 #calculate profile information for current datapoint
-                tavg, depth, temp, umag, vmag, area, rotfavg, rotfrms, ftbl, efbl, ccbl, fefr, fccr, terr, verr, aerr, w, envxccss, pkss, vc0a, vc0p, ve0a, ve0p, gcca, gefa, nindep = self.calc_current_datapoint(t1, t2)
+                tavg, depth, temp_zc, umag, vmag, area, rotfavg, rotfrms, ftbl, efbl, ccbl, fefr, fccr, terr, verr, aerr, w, envxccss, pkss, vc0a, vc0p, ve0a, ve0p, gcca, gefa, nindep = self.calc_current_datapoint(t1, t2)
+                
+                
+                #determining which temperature to use: zero crossing or FFT (depends on self.temp_mode and how they match)
+                if self.temp_mode == 1:
+                    temp = temp_zc
+                elif self.temp_mode == 2:
+                    temp = np.interp(depth, self.DEPTH_FFT, self.TEMP_FFT)
                 
                 #saving current profile point
                 self.PEAK = np.append(self.PEAK, np.max(pkss))

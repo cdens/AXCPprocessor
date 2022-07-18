@@ -21,7 +21,35 @@
 # =============================================================================
 
 import numpy as np
-from ._AXCP_decode_fxns import dataconvert
+
+
+#conversion: coefficients=C,  D_out = C[0] + C[1]*D_in + C[2]*D_in^2 + C[3]*D_in^3 + ...
+def dataconvert(data_in,coefficients):
+    
+    datatype = 1 #integer or float
+    if type(data_in) == list:
+        datatype = 2
+    elif type(data_in) == np.ndarray: #numpy array
+        dataype = 3
+        
+    if datatype == 1:
+        data_in = [data_in]
+        
+    output = []
+    for cur_data_in in data_in:
+        cur_output = 0
+        for (i,c) in enumerate(coefficients):
+            cur_output += c*cur_data_in**i
+        output.append(cur_output)
+        
+    if datatype == 1: #convert back from list to int/float
+        output = output[0]
+    elif datatype == 3: #convert to np array
+        output = np.asarray(output)
+            
+    return output
+    
+    
 
 
 def calc_temp_from_freq(self, freq, depth):
@@ -80,7 +108,7 @@ def calc_vel_components(self, fcss, fess, tss):
     #datapoint and calculate frequency amplitudes and phases for velocity estimates
     if nfit > len(phase)/2:
         aprxcc = np.stack([np.cos(phase[j]), np.sin(phase[j]), np.ones(len(j))])
-        coefcc, rescc,_,_ = np.linalg.lstsq(aprxcc.T, fcss[j]) #coefcc = aprxcc \ fcss(j)
+        coefcc, _,_,_ = np.linalg.lstsq(aprxcc.T, fcss[j]) #coefcc = aprxcc \ fcss(j)
         rescc = fcss[j] - np.matmul(aprxcc.T, coefcc) # rescc = fcss[j] - aprxcc * coefcc
         fccr = np.nanstd(rescc)
         fcca = np.sqrt(coefcc[0]**2+coefcc[1]**2)
@@ -88,7 +116,7 @@ def calc_vel_components(self, fcss, fess, tss):
         ccbl = coefcc[2]
         
         aprxef = np.append(aprxcc, np.array([np.linspace(-1,1,len(j))]), axis=0) #aprxef = [aprxcc,  linspace(-1,1,length(j))']
-        coefef, resef,_,_ = np.linalg.lstsq(aprxef.T, fess[j]) #coefef = aprxef \ fess(j)'
+        coefef, _,_,_ = np.linalg.lstsq(aprxef.T, fess[j]) #coefef = aprxef \ fess(j)'
         resef = fess[j] - np.matmul(aprxef.T, coefef) # resef = fess[j] - aprxef * coefef
         fefr = np.nanstd(resef)
         fefa = np.sqrt(coefef[0]**2+coefef[1]**2)

@@ -15,10 +15,7 @@
 #    along with AXBPS.  If not, see <https://www.gnu.org/licenses/>.
 # =============================================================================
 
-# =============================================================================
-#   This code is translated/updated from the MATLAB xcpdsp.m script written by 
-#       John Dunlap, University of Washington APL, 4 November 2009
-# =============================================================================
+
 
 import os
 import numpy as np
@@ -33,10 +30,6 @@ from traceback import print_exc as trace_error
 from . import geomag as gm
 
 
-
-#TODO:
-#   > switch temperature conversion from zero crossing to FFT
-#   > switch filter types from b/a to sos (output='sos' in butter and using sosfilt instead of lfilter)
 
 
 #this could be problematic for debugging but I'm getting tired of the "chunk could not be understood" messages
@@ -86,17 +79,17 @@ def readAXCPwavfile(inputfile, timerange):
     
 #AXCP Processor profile variables: 
 #Variables with one point per processing loop (includes profile and noise before (and possibly after) the profile:
-# T-time (sec)   CCENV-?   PK-peak audio amplitude   FCCDEV-compass coil frequency deviation   
+# T-time (sec)   CCENV-compass coil signal envelope   PK-peak audio amplitude   FCCDEV-compass coil frequency deviation   
 # FROTLP-probe rotation rate (Hz)   FROTDEV-standard deviation of probe rotation rate during each datapoint
 #
-#Variables with one point per depth (valid profile data only):
+#Variables with one point per depth datapoint (valid profile data only):
 # TIME-time (sec)   DEPTH-depth (m)   TEMP-Temperature (C)   TERR-Temperature error (C)   FTBL-Temperature frequency 
 # U_MAG-east/west current velocity oriented to mag north (east > 0)   V_MAG-as in U_MAG but north/south (north > 0)
 # U_TRUE/V_TRUE-as in U_MAG/V_MAG but oriented to true north   VERR-velocity error estimate
 # ROTF-probe rotation rate (Hz)   ROTFRMS-probe rotation rate RMS deviation
 # EFBL- baseline EF frequency corresponding to voltage across AXCP electrodes
 # CCBL- baseline frequency of compass coil corresponding to probe orientation (should oscillate at ~16 Hz)
-# FEFR, FCCR, VC0A, VC0P, VC0P, VE0A, VE0P, GEFA- variables related to velocity calculations (these are necessary to recalculate currents with an updated latitude/longitude)
+# FEFR, FCCR, VC0A, VC0P, VC0P, VE0A, VE0P, GEFA, GCCA, NINDEP- variables related to velocity calculations (these are necessary to recalculate currents with an updated latitude/longitude)
 # ENVCC-envelope of the compass coil signal   ENVCCRMS-RMS deviation of ENVCC
 # AREA-estimate of the coil area from compass coil data   AERR-area error estimate PEAK-peak audio amplitude
 # W-probe sink rate
@@ -105,7 +98,7 @@ class AXCP_Processor:
     
     #importing necessary functions to handle AXCP processing (automatically attaches them to self)
     # from ._AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
-    from ._AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
+    from ._AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_fft_window, dofft, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
     from ._AXCP_convert_fxns import (calc_temp_from_freq, calc_vel_components, calc_currents)
 
     #initializing current thread (saving variables, reading audio data or contacting/configuring receiver)

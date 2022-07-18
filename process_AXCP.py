@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
+
 # =============================================================================
 #     Author: Casey R. Densmore,
 #
-#    This file is part of the AXCP Processor
 #
 #    AXBPS is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -140,9 +140,17 @@ def main():
     parser.add_argument('-d', '--date',  default='-1', help='Drop date (YYYYMMDD)') 
     
     parser.add_argument('-q','--quality',  default='1', help='1 = high quality/slow speed, 2 = moderate quality/speed, 3 = low quality/fast')
-    parser.add_argument('-r','--revcoil',  default='0', help='Whether or not coil direction is reversed')
+    parser.add_argument('-r','--revcoil',  default='0', help='Whether or not coil direction is reversed (1=yes,0=no)')
     parser.add_argument('-p','--refreshrate',  default='0.5', help='Time (seconds) to process per iteration')
     
+    parser.add_argument('-u','--spindown_detect',  default='1', help='Whether or not to try to detect probe spindown realtime and automatically stop processing (1=yes,0=no)')
+    parser.add_argument('-m','--temperature_mode',  default='2', help='Whether to use zero crossings (1) or FFT (2) to calculate temperature at each depth')
+    parser.add_argument('-w','--temp_fft_window',  default='1', help='Temperature FFT window (sec)- only applicable for temperature_mode=2, must be less than or equal to refreshrate.')
+    
+    #1-use zero crossings and temperature baseline freq calculated with velocity
+    #2-use FFT (window size set by settings['tempfftwindow']) once per refresh
+    self.settings["temp_mode"] = 2 
+    self.settings["tempfftwindow"] = 1.0
     
     
     args = parser.parse_args()    
@@ -175,7 +183,10 @@ def main():
     #settings for processor
     settings = {'quality': int(args.quality),
                 'revcoil': int(args.revcoil),
-                'refreshrate': float(args.refreshrate)}
+                'refreshrate': float(args.refreshrate),
+                'spindown_detect_rt': int(args.spindown_detect),
+                'temp_mode': int(args.temperature_mode),
+                'tempfftwindow': float(args.temp_fft_window)}
     
     processAXCP(args.input, args.output, timerange, droplat, droplon, dropdate, settings)
     
