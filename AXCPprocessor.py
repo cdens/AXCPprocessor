@@ -20,6 +20,7 @@
 #       John Dunlap, University of Washington APL, 4 November 2009
 # =============================================================================
 
+import os
 import numpy as np
 from scipy import signal
 from scipy.io import wavfile #for wav file reading
@@ -29,7 +30,8 @@ from datetime import date
 
 from traceback import print_exc as trace_error
 
-import geomag as gm
+from . import geomag as gm
+
 
 
 #TODO:
@@ -41,33 +43,6 @@ import geomag as gm
 import warnings
 warnings.filterwarnings("ignore")
 
-
-#conversion: coefficients=C,  D_out = C[0] + C[1]*D_in + C[2]*D_in^2 + C[3]*D_in^3 + ...
-def dataconvert(data_in,coefficients):
-    
-    datatype = 1 #integer or float
-    if type(data_in) == list:
-        datatype = 2
-    elif type(data_in) == np.ndarray: #numpy array
-        dataype = 3
-        
-    if datatype == 1:
-        data_in = [data_in]
-        
-    output = []
-    for cur_data_in in data_in:
-        cur_output = 0
-        for (i,c) in enumerate(coefficients):
-            cur_output += c*cur_data_in**i
-        output.append(cur_output)
-        
-    if datatype == 1: #convert back from list to int/float
-        output = output[0]
-    elif datatype == 3: #convert to np array
-        output = np.asarray(output)
-            
-    return output
-    
 
 
 #reading the audio file
@@ -87,16 +62,16 @@ def readAXCPwavfile(inputfile, timerange):
     else:
         raise Exception('Too many dimensions for an audio file!')
     
-    # Normalize amplitude/DC offset of audio signal
+    #Normalize amplitude/DC offset of audio signal
     pcm_dc = np.mean(audiostream)
     pcm_ampl = np.max(np.abs(audiostream))
-    pcm = (audiostream.astype(np.float) - pcm_dc) / pcm_ampl
+    pcm = (audiostream.astype(np.float) - pcm_dc) / (2 * pcm_ampl)
         
     # downsampling if necessary 
     if fs > 50000: 
         pcm = signal.decimate(pcm, 2)
         fs /= 2
-                
+            
     #trimming PCM data to specified range as required
     if timerange[1] > 0: #trim end of profile first to avoid throwing off indicies
         e = int(self.fs*timerange[1])
@@ -116,7 +91,8 @@ def readAXCPwavfile(inputfile, timerange):
 class AXCP_Processor:
     
     #importing necessary functions to handle AXCP processing (automatically attaches them to self)
-    from _AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
+    # from ._AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
+    from ._AXCP_decode_fxns_sos import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
 
     #initializing current thread (saving variables, reading audio data or contacting/configuring receiver)
     #AXBT settings: fftwindow, minfftratio, minsiglev, triggerfftratio, triggersiglev, tcoeff, zcoeff, flims
@@ -134,7 +110,8 @@ class AXCP_Processor:
         self.lat = lat
         self.lon = lon
         self.dropdate = dropdate
-        self.gm = gm.GeoMag(wmm_filename='WMM.COF')
+        print(os.getcwd())
+        self.gm = gm.GeoMag(wmm_filename='AXCPprocessor/WMM.COF')
         self.update_position()
         
         #initializing AXCP processor specific vars, as well as filter and conversion coefficients and output profile arrays
@@ -211,7 +188,7 @@ class AXCP_Processor:
             
         #after finishing entire profile, refine the spindown point, correct amean, and adjust the profile
         print("[+] Processing status: 100%         ")
-        if self.status and len(self.TIME) > 0: #spinup detected, valid profile points recorded
+        if self.tspinup >= 0 and len(self.TIME) > 0: #spinup detected, valid profile points recorded
             self.refine_spindown_prof()
             self.calculate_true_velocities()
         else:
