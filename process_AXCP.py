@@ -20,8 +20,8 @@
 
 import os, shutil
 import numpy as np
-import AXCP_Processor as ap
-from datetime import datetime
+import AXCPprocessor as ap
+from datetime import datetime, date
 import argparse
 
 
@@ -168,9 +168,9 @@ def main():
     droplon = float(args.longitude)
     
     if float(args.date) == -1:
-        dropdate = datetime.utcnow()
+        dropdate = date.today()
     else:
-        dropdate = datetime.strptime(args.date,'%Y%m%d')
+        dropdate = datetime.strptime(args.date,'%Y%m%d').date()
     
     #settings for processor
     settings = {'quality': int(args.quality),
@@ -210,16 +210,18 @@ def processAXCP(input_file, output_file, timerange, droplat, droplon, dropdate, 
     AXCP.run()
     
     temperature = AXCP.TEMP
-    depth = AXCP.D
+    depth = AXCP.DEPTH
     time = AXCP.TIME
-    u = AXCP.U
-    v = AXCP.V
-    frot = AXCP.FROT
+    u = AXCP.U_MAG
+    v = AXCP.V_MAG
+    frot = AXCP.ROTF
+    ut = AXCP.U_TRUE
+    vt = AXCP.V_TRUE
     
     
     print("Profile processing complete- writing output files")
     
-    data = {'Time (s)':time, 'Rotation Rate (Hz)':frot, 'Depth (m)':depth, 'Temperature (degC)':temperature, 'Zonal Current (m/s)':u, 'Meridional Current (m/s)':v}
+    data = {'Time (s)':time, 'Rotation Rate (Hz)':frot, 'Depth (m)':depth, 'Temperature (degC)':temperature, 'U Current (mag; m/s)':u, 'V Current (mag;m/s)':v, 'U Current (true; m/s)':ut, 'V Current (true; m/s)':vt}
     
     nshem = 'N' if droplat >= 0 else 'S'
     ewhem = 'E' if droplon >= 0 else 'W'
@@ -227,9 +229,9 @@ def processAXCP(input_file, output_file, timerange, droplat, droplon, dropdate, 
     qualitystr = 'High' if settings['quality'] <= 1 else 'Low' if settings['quality'] >= 3 else 'Medium'
     
     comments = f"""Probe Type : AXCP
-    Magvar date      : {dropdate:%Y/%m/%d}
-    Magvar latitude  : {abs(droplat):7.3f} {nshem}
-    Magvar longitude : {abs(droplon):8.3f} {ewhem}
+    MagVar date      : {dropdate:%Y/%m/%d}
+    MagVar latitude  : {abs(droplat):7.3f} {nshem}
+    MagVar longitude : {abs(droplon):8.3f} {ewhem}
     Quality        : {settings['quality']} ({qualitystr})
     Reverse coil   : {revcoilstr}
     Refresh rate   : {settings['refreshrate']} sec

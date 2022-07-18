@@ -25,7 +25,7 @@ from scipy import signal
 from scipy.io import wavfile #for wav file reading
 
 import time as timemodule
-import datetime as dt
+from datetime import date
 
 from traceback import print_exc as trace_error
 
@@ -54,6 +54,7 @@ def dataconvert(data_in,coefficients):
     if datatype == 1:
         data_in = [data_in]
         
+    output = []
     for cur_data_in in data_in:
         cur_output = 0
         for (i,c) in enumerate(coefficients):
@@ -115,11 +116,11 @@ def readAXCPwavfile(inputfile, timerange):
 class AXCP_Processor:
     
     #importing necessary functions to handle AXCP processing (automatically attaches them to self)
-    from ._AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
+    from _AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
 
     #initializing current thread (saving variables, reading audio data or contacting/configuring receiver)
     #AXBT settings: fftwindow, minfftratio, minsiglev, triggerfftratio, triggersiglev, tcoeff, zcoeff, flims
-    def __init__(self, audiofile, timerange=[0,-1], lat=20, lon=-80, dropdate=dt.datetime.utcnow(), user_settings={}):
+    def __init__(self, audiofile, timerange=[0,-1], lat=20, lon=-80, dropdate=date.today(), settings={}):
         
         #reading in WAV file
         self.audiofile = audiofile
@@ -127,7 +128,7 @@ class AXCP_Processor:
         self.numpoints = len(self.audiostream)
         
         #initialize default settings, override user-specified ones
-        self.init_AXCP_settings(user_settings)     
+        self.init_AXCP_settings(settings)     
         
         #updating position, magnetic field components/declination
         self.lat = lat
@@ -143,8 +144,8 @@ class AXCP_Processor:
         
     def update_position(self):
         self.magvar = self.gm.get_params(dlat=self.lat, dlon=self.lon, time=self.dropdate)
-        self.fh = self.magvar.fh #always positive
-        self.fz = -self.magvar.fz #switches convention so positive is up
+        self.fh = self.magvar.bh #always positive
+        self.fz = -self.magvar.bz #switches convention so positive is up
         self.dec = self.magvar.dec #positive is East
         
         
@@ -180,9 +181,8 @@ class AXCP_Processor:
             #calculating end of next slice of PCM data for signal level calcuation and demodulation
             e = self.demodbufferstartind + self.pointsperloop
             
-            if self.numpoints - self.demodbufferstartind < 4*self.N_power: #kill process at file end
+            if self.numpoints - self.demodbufferstartind < 4*self.f_s: #kill process at file end
                 self.keepgoing = False
-                print("[+] Processing status: 100%")
             
             elif e >= self.numpoints: #terminate loop if at end of file
                 e = self.numpoints - 1
@@ -196,15 +196,9 @@ class AXCP_Processor:
             print(f"[+] Processing status: {round(100*self.demodbufferstartind/self.numpoints)}%         ", end='\r')
             
             if self.keepgoing: #only process buffer if there is enough data
-                oldstatus = self.status #track status change to emit triggered signal when necessary
-                
+            
                 #demodulating and parsing current batch of AXCTD PCM data
-                data = self.iterate_AXCP_process(e)
-                
-                
-                if len(data) > 1: #retrieved good profile data
-                    pass #save profile data here
-                
+                self.iterate_AXCP_process(e)
     
                 #incrementing demod buffer start forward
                 self.demodbufferstartind = e 

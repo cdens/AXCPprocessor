@@ -23,6 +23,8 @@
 import numpy as np
 from scipy import signal
 
+from AXCPprocessor import dataconvert
+
 #initializes dict with default settings for AXCTD processor
 #any specified settings will be overwritten after this function is called in __init__
 def init_AXCP_settings(self, settings):
@@ -33,7 +35,7 @@ def init_AXCP_settings(self, settings):
     self.settings["quality"]     = 3
             
     for csetting in settings:
-        self.settings[csetting] = user_settings[csetting] #overwrite defaults for user specified settings 
+        self.settings[csetting] = settings[csetting] #overwrite defaults for user specified settings 
       
     self.revcoil = self.settings["revcoil"]
     self.quality = self.settings["quality"]
@@ -70,9 +72,9 @@ def initialize_AXCP_vars(self):
     
     # make input buffer size evenly divisible by all the subsampling
     # so filtering and subsampling is less complicated
-    self.pointsperloop = round(self.f_s * self.refreshrate)
-    self.pointsperloop = ceil(self.pointsperloop / self.nss1) * self.nss1
-    self.pointsperloop = ceil(self.pointsperloop / self.nss1 / self.nss2) * self.nss1 * self.nss2
+    self.pointsperloop = np.round(self.f_s * self.refreshrate)
+    self.pointsperloop = np.ceil(self.pointsperloop / self.nss1) * self.nss1
+    self.pointsperloop = int(np.ceil(self.pointsperloop / self.nss1 / self.nss2) * self.nss1 * self.nss2)
     self.refreshrate = self.pointsperloop / self.f_s # actual seconds
     
     # first fit is from depth_beg to depth_beg + depth_chunk
@@ -82,33 +84,33 @@ def initialize_AXCP_vars(self):
     self.depth_step  = 2
     
     #profile output arrays
-    self.T       = []
-    self.CCENV   = []
-    self.PK      = []
-    self.FCCDEV  = []
-    self.FROTLP  = []
-    self.FROTDEV = []
-    self.TIME = [] 
-    self.DEPTH= []
-    self.TEMP = []
-    self.U_MAG    = []
-    self.V_MAG    = []
-    self.U_TRUE    = []
-    self.V_TRUE    = []
-    self.ROTF = []
-    self.ROTFRMS = []
-    self.AREA = []
-    self.EFBL = []
-    self.CCBL = []
-    self.FEFR = []
-    self.FCCR = []
-    self.VERR = []
-    self.AERR = []
-    self.TERR = []
-    self.W    = []
-    self.ENVCC       = []
-    self.ENVCCRMS    = []
-    self.PEAK        = []
+    self.T       = np.array([])
+    self.CCENV   = np.array([])
+    self.PK      = np.array([])
+    self.FCCDEV  = np.array([])
+    self.FROTLP  = np.array([])
+    self.FROTDEV = np.array([])
+    self.TIME = np.array([])
+    self.DEPTH= np.array([])
+    self.TEMP = np.array([])
+    self.U_MAG    = np.array([])
+    self.V_MAG    = np.array([])
+    self.U_TRUE    = np.array([])
+    self.V_TRUE    = np.array([])
+    self.ROTF = np.array([])
+    self.ROTFRMS = np.array([])
+    self.AREA = np.array([])
+    self.EFBL = np.array([])
+    self.CCBL = np.array([])
+    self.FEFR = np.array([])
+    self.FCCR = np.array([])
+    self.VERR = np.array([])
+    self.AERR = np.array([])
+    self.TERR = np.array([])
+    self.W    = np.array([])
+    self.ENVCC       = np.array([])
+    self.ENVCCRMS    = np.array([])
+    self.PEAK        = np.array([])
     
     #change each iteration
     self.xccbpendkeep = 0
@@ -209,8 +211,7 @@ def init_constants(self):
     self.tcalfreq  = [ 285.3,   449.1 ]  # cal frequency at 0 and 30 deg C points
     self.tcalres   = [ 16329,   4024  ]  # cal resistance at 0 and 30 deg C points
     self.tcal      = [ 1.73323e-3, 8.75509e-5, 1.64067e-5, -5.09882e-7 ]
-    self.tcalrs = (self.tcalfreq[0]*self.tcalres[0]-self.tcalfreq[1]*self.tcalres[1]) / ...
-        (self.tcalfreq[1]-self.tcalfreq[0])
+    self.tcalrs = (self.tcalfreq[0]*self.tcalres[0]-self.tcalfreq[1]*self.tcalres[1]) / (self.tcalfreq[1]-self.tcalfreq[0])
     self.tcalcap = 1.0/(4.4*self.tcalfreq[0]*(self.tcalrs+self.tcalres[0]))
     self.tcor      = [-0.10, -7.5e-5]
     
@@ -221,7 +222,8 @@ def init_constants(self):
     
     #depth scaling
     self.depth_poly =  [4.68, 4.377, -0.00044   ] # Prater, JTech, Dec 1991
-    self.inv_depth_poly = [3.11700848802192e-10,5.14227005928016e-06,0.228465938277901,-1.07390827937333]
+    # self.inv_depth_poly = [3.11700848802192e-10,5.14227005928016e-06,0.228465938277901,-1.07390827937333]
+    self.inv_depth_poly = [-1.07390827937333,0.228465938277901,5.14227005928016e-06, 3.11700848802192e-10]
 
     
     
@@ -231,7 +233,7 @@ def init_constants(self):
 def first_subsample(self, xinlp):
     
     # first subsampling
-    xinlp = xinlp[nss1-1::nss1]
+    xinlp = xinlp[self.nss1-1::self.nss1]
     
     # band pass filter to get just the three carrier frequencies
     xccbp,self.zxccbp = signal.lfilter(self.bxccbp,self.axccbp,xinlp,zi=self.zxccbp)
@@ -287,16 +289,17 @@ def first_subsample(self, xinlp):
 def second_subsample(self, pklp, envxcclp, fcclp, feflp, ftelp):
     
     # second subsampling -- use to do LSQ fits, and use fcc2 for probe rotation detection
-    pk_cur     = pklp[nss2-1::nss2]
-    envxcc_cur = envxcclp[nss2-1::nss2]
-    fcc_cur = fcclp[nss2-1::nss2] * 0.5 * fnyq1 #also correct frequency based on subsampling interval
-    fef_cur = feflp[nss2-1::nss2] * 0.5 * fnyq1
-    fte_cur = ftelp[nss2-1::nss2] * 0.5 * fnyq1
-    dt_subsample = tsamp * nss1 * nss2
-    tim_cur = np.linspace(T[-1]-(n2-1)*dt_subsample, T[-1], len(fcc2) )
+    pk_cur     = pklp[self.nss2-1::self.nss2]
+    envxcc_cur = envxcclp[self.nss2-1::self.nss2]
+    fcc_cur = fcclp[self.nss2-1::self.nss2] * 0.5 * self.fnyq1 #also correct frequency based on subsampling interval
+    fef_cur = feflp[self.nss2-1::self.nss2] * 0.5 * self.fnyq1
+    fte_cur = ftelp[self.nss2-1::self.nss2] * 0.5 * self.fnyq1
+    dt_subsample = self.tsamp * self.nss1 * self.nss2
+    n2 = len(fcc_cur) 
+    tim_cur = np.linspace(self.T[-1]-(n2-1)*dt_subsample, self.T[-1], n2)
     
     # band pass fcc for two rotation detection methods below
-    fccbp,self.zfccbp = signal.lfilter(self.bfccbp,self.afccbp,fcc2,zi=self.zfccbp)
+    fccbp,self.zfccbp = signal.lfilter(self.bfccbp,self.afccbp,fcc_cur,zi=self.zfccbp)
     
     # envelope detect fccbp
     envfcclp,self.zenvfcclp = signal.lfilter(self.benvfcclp,self.aenvfcclp,np.abs(fccbp),zi=self.zenvfcclp)
@@ -305,13 +308,13 @@ def second_subsample(self, pklp, envxcclp, fcclp, feflp, ftelp):
     fccbpendprev = self.fccbpendkeep
     self.fccbpendkeep = fccbp[-1]
     x = np.append(fccbpendprev, fccbp)
-    r = np.ones(np.len(x))
+    r = np.ones(len(x))
     r[x < 0] = -1
     fccbpzcp = np.abs(np.diff(r))
     
     # low pass signal.lfilter zero crossing pulses to estimate rotation frequency
     frotlp,self.zfrotlp = signal.lfilter(self.bfrotlp,self.afrotlp,fccbpzcp,zi=self.zfrotlp)
-    frotlp = frotlp * 0.5 * fnyq2
+    frotlp = frotlp * 0.5 * self.fnyq2
     
     # get variability of frot bandpass then envelope detect
     frotbp,self.zfrotbp = signal.lfilter(self.bfrotbp,self.afrotbp,frotlp,zi=self.zfrotbp)
@@ -326,8 +329,9 @@ def second_subsample(self, pklp, envxcclp, fcclp, feflp, ftelp):
     
     
 def calc_current_datapoint(self, t1, t2):
+    
     # select data for fitting
-    current_inds = np.where((self.tim > t1) & (self.tim < t2))
+    current_inds = np.where((self.tim > t1) & (self.tim < t2))[0]
     tss  = self.tim[current_inds]
     ftss = self.fte[current_inds]
     fess = self.fef[current_inds]
@@ -343,8 +347,8 @@ def calc_current_datapoint(self, t1, t2):
     
     # depth & fall rate, w
     timd = tavg - self.tspinup
-    depth =  dataconvert(timd,depth_poly)
-    w     = - dataconvert(timd,[depth_poly[1],depth_poly[2]*2])
+    depth =  dataconvert(timd,self.depth_poly)
+    w     = - dataconvert(timd,[self.depth_poly[1],self.depth_poly[2]*2])
     
     # temperature
     ftbl = np.nanmean(ftss)
@@ -356,26 +360,26 @@ def calc_current_datapoint(self, t1, t2):
     ftbl_err = np.nanstd(r) / np.sqrt(nindep)
     
     
-    teres = 1.0/(4.4*ftbl*tcalcap)-tcalrs
+    teres = 1.0/(4.4*ftbl*self.tcalcap)-self.tcalrs
     if teres>0:
         ln = np.log(teres) 
     else:
-        ln = NaN 
+        ln = np.NaN 
 
-    temp=1.0/(tcal[0]+ln*(tcal[1]+ln*(tcal[2]+ ln*tcal[3]))) - 273.15
+    temp=1.0/(self.tcal[0]+ln*(self.tcal[1]+ln*(self.tcal[2]+ ln*self.tcal[3]))) - 273.15
     
     # adjust temperature to match mendo.rt processing
-    temp = temp + tcor[0] + tcor[1] * depth
+    temp = temp + self.tcor[0] + self.tcor[1] * depth
     
     # temperature error
-    teres_off = 1.0/(4.4*(ftbl+ftbl_err)*tcalcap)-tcalrs
+    teres_off = 1.0/(4.4*(ftbl+ftbl_err)*self.tcalcap)-self.tcalrs
     if teres_off>0:
         ln=np.log(teres_off) 
     else:
-        ln = NaN 
+        ln = np.NaN 
     
-    temp_off=1.0/(tcal[0]+ln*(tcal[1]+ln*(tcal[2]+ ln*tcal[3]))) - 273.15
-    temp_off = temp_off + tcor[0] + tcor[1] * depth  # to match mendo.rt
+    temp_off=1.0/(self.tcal[0]+ln*(self.tcal[1]+ln*(self.tcal[2]+ ln*self.tcal[3]))) - 273.15
+    temp_off = temp_off + self.tcor[0] + self.tcor[1] * depth  # to match mendo.rt
     terr = temp_off - temp
     
     
@@ -395,15 +399,15 @@ def calc_current_datapoint(self, t1, t2):
         peravg = np.nanmean(per)
         perrms = np.nanstd(per)
     else:
-        peravg = NaN
-        perrms = NaN
+        peravg = np.NaN
+        perrms = np.NaN
     
     
     rotfavg = (1/peravg)
     rotfrms = rotfavg * perrms / peravg
     
     # make phase
-    phase = NaN * np.ones(len(tss))
+    phase = np.NaN * np.ones(len(tss))
     for jper,_ in enumerate(per):
         j = np.where((tzp[jper]<tss) & (tss <= tzp[jper+1]))[0]
         phase[j] = 2*np.pi*(tss[j] - tzp[jper]) / per[jper]
@@ -414,52 +418,52 @@ def calc_current_datapoint(self, t1, t2):
     
     if nfit > len(phase)/2:
         aprxcc = np.stack([np.cos(phase[j]), np.sin(phase[j]), np.ones(len(j))])
-        coefcc,_,_,_ = np.linalg.lstsq(aprxcc, fcss[j]) #coefcc = aprxcc \ fcss(j)
-        rescc = fcss[j] - aprxcc * coefcc
+        coefcc, rescc,_,_ = np.linalg.lstsq(aprxcc.T, fcss[j]) #coefcc = aprxcc \ fcss(j)
+        # rescc = fcss[j] - aprxcc * coefcc
         fccr = np.nanstd(rescc)
         fcca = np.sqrt(coefcc[0]**2+coefcc[1]**2)
         fccp = np.arctan2(-coefcc[1],coefcc[0])
         ccbl = coefcc[2]
         
         aprxef = np.append(aprxcc, np.array([np.linspace(-1,1,len(j))]), axis=0) #aprxef = [aprxcc,  linspace(-1,1,length(j))']
-        coefef,_,_,_ = np.linalg.lstsq(aprxef, fess[j]) #coefef = aprxef \ fess(j)'
-        resef = fess[j] - aprxef * coefef
+        coefef, resef,_,_ = np.linalg.lstsq(aprxef.T, fess[j]) #coefef = aprxef \ fess(j)'
+        # resef = fess[j] - aprxef * coefef
         fefr = np.nanstd(resef)
         fefa = np.sqrt(coefef[0]**2+coefef[1]**2)
         fefp = np.arctan2(-coefef[1],coefef[0])
         efbl = coefef[2]
         
     else:
-        ccbl = NaN
-        efbl = NaN
-        fccr = NaN
-        fefr = NaN
-        fcca = NaN
-        fefa = NaN
-        fccp = NaN
-        fefp = NaN
+        ccbl = np.NaN
+        efbl = np.NaN
+        fccr = np.NaN
+        fefr = np.NaN
+        fcca = np.NaN
+        fefa = np.NaN
+        fccp = np.NaN
+        fefp = np.NaN
         
     
     # probe gain and phase angles as function of rotation frequency
-    gcca  = dataconvert(rotfavg,gcca_poly)
-    gccp  = dataconvert(rotfavg,gccp_poly)
-    gcora = dataconvert(rotfavg,gcora_poly)
-    gcorp = dataconvert(rotfavg,gcorp_poly)
-    gefa  = dataconvert(rotfavg,gefa_poly)
-    gefp  = dataconvert(rotfavg,gefp_poly)
+    gcca  = dataconvert(rotfavg,self.gcca_poly)
+    gccp  = dataconvert(rotfavg,self.gccp_poly)
+    gcora = dataconvert(rotfavg,self.gcora_poly)
+    gcorp = dataconvert(rotfavg,self.gcorp_poly)
+    gefa  = dataconvert(rotfavg,self.gefa_poly)
+    gefp  = dataconvert(rotfavg,self.gefp_poly)
     
     # convert frequency amp and phase to velocity estimates
-    vc0a = fcca / gcvfa / gcca * 1e6
-    vc0p = fccp - gcvfp - gccp
+    vc0a = fcca / self.gcvfa / gcca * 1e6
+    vc0p = fccp - self.gcvfp - gccp
     
-    ve0a1 = fefa / gevfa / gefa * 1e6
-    ve0p1 = fefp - gevfp - gefp
+    ve0a1 = fefa / self.gevfa / gefa * 1e6
+    ve0p1 = fefp - self.gevfp - gefp
     
     ve0q1 = ve0a1 * np.cos(ve0p1)
     ve0i1 = ve0a1 * np.sin(ve0p1)
     
-    ve0a2 = fcca / gcvfa / gcca * gcora / gefa * 1e6
-    ve0p2 = fccp - gcvfp - gccp + gcorp - gefp
+    ve0a2 = fcca / self.gcvfa / gcca * gcora / gefa * 1e6
+    ve0p2 = fccp - self.gcvfp - gccp + gcorp - gefp
     
     ve0q2 = ve0a2 * np.cos(ve0p2)
     ve0i2 = ve0a2 * np.sin(ve0p2)
@@ -467,22 +471,22 @@ def calc_current_datapoint(self, t1, t2):
     ve0q = ve0q1 - ve0q2
     ve0i = ve0i1 - ve0i2
     
-    ve0a = np.sqrt(ve0q^2+ve0i^2)
+    ve0a = np.sqrt(ve0q**2+ve0i**2)
     ve0p = np.arctan2(ve0i,ve0q)
     
     if self.revcoil:
         ve0p += np.pi
 
-    area = vc0a / rotfavg * sfa
-    aerr = np.abs(fccr/gcvfa/gcca*1e6/rotfavg*sfa)/np.sqrt(nindep)
+    area = vc0a / rotfavg * self.sfa
+    aerr = np.abs(fccr/self.gcvfa/gcca*1e6/rotfavg*self.sfa)/np.sqrt(nindep)
     # zcdp = -pi/2 - fccp
-    psi = -ve0p + vc0p + pi/2 + np.pi
-    uw = w * (area/amean_rough) * self.sfw
+    psi = -ve0p + vc0p + np.pi/2 + np.pi
+    uw = w * (area/self.amean_rough) * self.sfw
     
     umag =  ve0a * np.cos(psi) * self.sfv
     vmag = -ve0a * np.sin(psi) * self.sfv + uw
     
-    verr = np.abs(fefr * self.sfv / gevfa / gefa * 1e6) / np.sqrt(nindep)
+    verr = np.abs(fefr * self.sfv / self.gevfa / gefa * 1e6) / np.sqrt(nindep)
     
     
     return tavg, depth, temp, umag, vmag, area, rotfavg, rotfrms, efbl, ccbl, fefr, fccr, terr, verr, aerr, w, envxccss, pkss
@@ -493,42 +497,42 @@ def calc_current_datapoint(self, t1, t2):
 #this function is called once per loop of the AXCP Processor and processes as much data as is available in the respective buffers 
 def iterate_AXCP_process(self, e): 
     
-    npp += 1 #iterate processor timestep datapoint counter
+    self.npp += 1 #iterate processor timestep datapoint counter
     
-    self.T.append(e/self.f_s) #time at end of current PCM chunk
-    self.PK.append(max(abs(self.demod_buffer))) #peak audio value
+    self.T = np.append(self.T, e/self.f_s) #time at end of current PCM chunk
+    self.PK = np.append(self.PK, max(abs(self.demod_buffer))) #peak audio value
     
-    xinlp, self.zxinlp = signal.lfilter(self.bxinlp, self.axinlp, self.demod_buffer, self.zxinlp) #lowpass filter input buffer
+    xinlp, self.zxinlp = signal.lfilter(self.bxinlp, self.axinlp, self.demod_buffer, zi=self.zxinlp) #lowpass filter input buffer
     
     #running first subsample, applying filters, pulling big three frequency band zerocrossing points
     envxcclp, fcclp, feflp, ftelp = self.first_subsample(xinlp)
     
     pklp = self.PK[-1] * np.ones(len(envxcclp)) #peak value, length of first subsample
-    self.CCENV.append(envxcclp[-1] * np.sqrt(2)) #compass coil environment
+    self.CCENV = np.append(self.CCENV, envxcclp[-1] * np.sqrt(2)) #compass coil environment
     
     #running second subsample, pulling big three center frequencies for profile calculations
     pk_cur, envxcc_cur, fcc_cur, fef_cur, fte_cur, tim_cur, envfcclp, frotlp, envfrotlp = self.second_subsample(pklp, envxcclp, fcclp, feflp, ftelp)
     
     #saving rotation frequencies
-    self.FCCDEV.append( envfcclp[-1]*np.sqrt(2) )
-    self.FROTLP.append( frotlp[-1] )
-    self.FROTDEV.append( envfrotlp[-1]*np.sqrt(2) )
+    self.FCCDEV = np.append(self.FCCDEV, envfcclp[-1]*np.sqrt(2) )
+    self.FROTLP = np.append(self.FROTLP, frotlp[-1] )
+    self.FROTDEV = np.append(self.FROTDEV, envfrotlp[-1]*np.sqrt(2) )
     
     
     #only retain last 40 points from previous iteration, append on new values
     retainind = -40 #last 40 points
-    self.pk = np.append(self.pk[retainind:], pk_new)
-    self.envxcc = np.append(self.envxcc[retainind:], envxcc_new)
-    self.fcc = np.append(self.fcc[retainind:], fcc_new)
-    self.fef = np.append(self.fef[retainind:], fef_new)
-    self.fte = np.append(self.fte[retainind:], fte_new)
-    self.tim = np.append(self.tim[retainind:], tim_new)
+    self.pk = np.append(self.pk[retainind:], pk_cur)
+    self.envxcc = np.append(self.envxcc[retainind:], envxcc_cur)
+    self.fcc = np.append(self.fcc[retainind:], fcc_cur)
+    self.fef = np.append(self.fef[retainind:], fef_cur)
+    self.fte = np.append(self.fte[retainind:], fte_cur)
+    self.tim = np.append(self.tim[retainind:], tim_cur)
     
     
     #checking to see if probe has spunup (update status to 1 if so)
     #requirements: time >= 5 seconds, rotation frequency deviation below 0.5 (steady state), rotation frequency between 10 and 20 Hz
     #precise spinup time is defined as achieving 8 Hz, half rotation rate of average 16 Hz spin
-    if not self.status and self.T[-1] >= 5 and self.FROTDEV[-1] <= 0.5 and 10 < self.FROTLP < 20:
+    if not self.status and self.T[-1] >= 5 and self.FROTDEV[-1] <= 0.5 and 10 < self.FROTLP[-1] < 20:
         
         self.status = 1 #noting profile has spun up,  finding precise spinup time
         
@@ -540,7 +544,7 @@ def iterate_AXCP_process(self, e):
         #getting calculating frequency rate of change across zero crossing points to interpolate exact zero crossing times
         d_freq = fcc0[cross_points+1] - fcc0[cross_points]
         d_time = self.tim[cross_points+1] - self.tim[cross_points]
-        tim_zc = self.tim3[cross_points] - fcc0[cross_points] * d_time / d_freq #actual zerocross times
+        tim_zc = self.tim[cross_points] - fcc0[cross_points] * d_time / d_freq #actual zerocross times
         rotf_zc = 1 / np.diff(tim_zc)
         
         #rotf_zc will start extremely high when there is no valid data, drop low for a second as the static compass coil frequency is detected, and then quickly increase above 8 Hz as the probe spins up. Spinup time is the first time after the point where the probe speed first exceeds 8 Hz
@@ -562,37 +566,37 @@ def iterate_AXCP_process(self, e):
         process_new_depth = True
         while process_new_depth:
             
-            d1 = self.depth_beg + nff*depth_step #starting depth of current segment
-            t1 = dataconvert(d1, self.inv_depth_poly) #starting time for current segment
-            t2 = dataconvert(d1+depth_chunk, self.inv_depth_poly) #ending time for current segment
-            
+            d1 = self.depth_beg + self.nff*self.depth_step #starting depth of current segment
+            t1 = dataconvert(d1, self.inv_depth_poly) + self.tspinup #starting time for current segment
+            t2 = dataconvert(d1+self.depth_chunk, self.inv_depth_poly) + self.tspinup #ending time for current segment
+                        
             if t2 > self.tim[-1]:
                 process_new_depth = False #out of new data, wait to grab more AXCP data
             else:
-                nff += 1 #iterate profile datapoint counter
+                self.nff += 1 #iterate profile datapoint counter
                 
                 tavg, depth, temp, umag, vmag, area, rotfavg, rotfrms, efbl, ccbl, fefr, fccr, terr, verr, aerr, w, envxccss, pkss = self.calc_current_datapoint(t1, t2)
                 
                 #saving current profile point
-                self.TIME.append(tavg)
-                self.DEPTH.append(depth)
-                self.TEMP.append(temp)
-                self.U_MAG.append(umag)
-                self.V_MAG.append(vmag)
-                self.ROTF.append(rotfavg)
-                self.ROTFRMS.append(rotfrms)
-                self.AREA.append(area)
-                self.EFBL.append(efbl)
-                self.CCBL.append(ccbl)
-                self.FEFR.append(fefr)
-                self.FCCR.append(fccr)
-                self.VERR.append(verr)
-                self.AERR.append(aerr)
-                self.TERR.append(terr)
-                self.W.append(w)
-                self.ENVCC.append(np.nanmean(envxccss))
-                self.ENVCCRMS.append(np.nanstd(envxccss))
-                self.PEAK.append(np.max(pkss))
+                self.TIME = np.append(self.TIME, tavg)
+                self.DEPTH = np.append(self.DEPTH, depth)
+                self.TEMP = np.append(self.TEMP, temp)
+                self.U_MAG = np.append(self.U_MAG, umag)
+                self.V_MAG = np.append(self.V_MAG, vmag)
+                self.ROTF = np.append(self.ROTF, rotfavg)
+                self.ROTFRMS = np.append(self.ROTFRMS, rotfrms)
+                self.AREA = np.append(self.AREA, area)
+                self.EFBL = np.append(self.EFBL, efbl)
+                self.CCBL = np.append(self.CCBL, ccbl)
+                self.FEFR = np.append(self.FEFR, fefr)
+                self.FCCR = np.append(self.FCCR, fccr)
+                self.VERR = np.append(self.VERR, verr)
+                self.AERR = np.append(self.AERR, aerr)
+                self.TERR = np.append(self.TERR, terr)
+                self.W = np.append(self.W, w)
+                self.ENVCC = np.append(self.ENVCC, np.nanmean(envxccss))
+                self.ENVCCRMS = np.append(self.ENVCCRMS, np.nanstd(envxccss))
+                self.PEAK = np.append(self.PEAK, np.max(pkss))
                 
     
                 
@@ -607,8 +611,8 @@ def refine_spindown_prof(self):
     nffspindown = goodpoints[-1] #new default value is last valid point meeting above criteria
     
     if len(goodpoints) > 0 and len(self.TIME) >= 20: #enough data to not cause buffer issues
-        inds_refine = [i for i in range(goodpoints[-1]-10, goodpoints[-1]-1)]
-        inds_refine = inds_refine[np.isfinite(self.ROTFRMS[inds_refine])] #only indices with finite ROTFRMS values
+        inds_refine = [i for i in range(goodpoints[-1]-10, goodpoints[-1]-1) if np.isfinite(self.ROTFRMS[i])]
+        # inds_refine = inds_refine[np.where(np.isfinite(self.ROTFRMS[inds_refine]))[0]] #only indices with finite ROTFRMS values
         
         #need at least two values for this calculation to work
         #delete final point if ROTFRMS exceeds 2*RMS of previous few points
@@ -620,7 +624,7 @@ def refine_spindown_prof(self):
                 nffspindown = goodpoints[-1] - 1
                 
                 
-    #truncating all profiles, converting to numpy arrays
+    #truncating all profiles, converting to numpy arrays (already should be but just to be sure)
     self.TIME = np.asarray(self.TIME[:nffspindown])
     self.DEPTH = np.asarray(self.DEPTH[:nffspindown])
     self.TEMP = np.asarray(self.TEMP[:nffspindown])
@@ -642,15 +646,15 @@ def refine_spindown_prof(self):
     self.PEAK = np.asarray(self.PEAK[:nffspindown])
     
     #updating AMEAN calculation
-    good_areas = [carea if np.isfinite(carea) and caerr<5 for carea,caerr in zip(self.AREA,self.AERR)]
+    good_areas = [carea for carea,caerr in zip(self.AREA,self.AERR) if np.isfinite(carea) and caerr<5]
     if len(good_areas) >= 10:
-        inset = np.ceil(0.1 * len(good_areas)) #ignore outer +/- 10% of areas
+        inset = int(np.ceil(0.1 * len(good_areas))) #ignore outer +/- 10% of areas
         self.amean_calc = np.nanmean(good_areas[inset:-inset])
         
         #updating profile meridional current velocities
         self.V_MAG = self.V_MAG - self.sfw * self.W * self.AREA * (1/self.amean_rough - 1/self.amean_calc)
         
-        
+    
     
         
         
@@ -658,9 +662,9 @@ def calculate_true_velocities(self):
     
     #convert current profile from degrees magnetic to true
     vel = np.sqrt(self.U_MAG**2 + self.V_MAG**2)
-    curdir_true = 90 - (180/np.pi) * np.arctan2(self.V_MAG, self.U_MAG) + self.dec #MEAT: magnetic -> east add -> true
-    self.U_TRUE = vel * np.sind(curdir_true)
-    self.V_TRUE = vel * np.cosd(curdir_true)
+    curdir_true = (np.pi/180) * (90 - (180/np.pi) * np.arctan2(self.V_MAG, self.U_MAG) + self.dec) #MEAT: magnetic -> east add -> true
+    self.U_TRUE = vel * np.sin(curdir_true)
+    self.V_TRUE = vel * np.cos(curdir_true)
     
     
     
