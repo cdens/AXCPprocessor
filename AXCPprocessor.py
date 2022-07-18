@@ -92,7 +92,7 @@ class AXCP_Processor:
     
     #importing necessary functions to handle AXCP processing (automatically attaches them to self)
     # from ._AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
-    from ._AXCP_decode_fxns_sos import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
+    from ._AXCP_decode_fxns import (init_AXCP_settings, initialize_AXCP_vars, init_filters, init_constants, first_subsample, second_subsample, calc_current_datapoint, iterate_AXCP_process, refine_spindown_prof, calculate_true_velocities)
 
     #initializing current thread (saving variables, reading audio data or contacting/configuring receiver)
     #AXBT settings: fftwindow, minfftratio, minsiglev, triggerfftratio, triggersiglev, tcoeff, zcoeff, flims

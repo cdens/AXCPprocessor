@@ -60,9 +60,10 @@ def dataconvert(data_in,coefficients):
 def init_AXCP_settings(self, settings):
 
     self.settings = {}
-    self.settings["refreshrate"] = 0.5
-    self.settings["revcoil"]     = False
-    self.settings["quality"]     = 3
+    self.settings["refreshrate"] = 0.5 #size of raw audio chunks to process, in seconds
+    self.settings["revcoil"]     = False #coil on AXCP reversed- rotates currents by 180 degrees
+    self.settings["quality"]     = 1    #profile processing quality- 1=high/slow, 2=moderate speed/quality, 3=low/fast
+    self.settings["spindown_detect_rt"] = True #realtime detection of probe spindown to avoid processing unnecessary data
             
     for csetting in settings:
         self.settings[csetting] = settings[csetting] #overwrite defaults for user specified settings 
@@ -75,6 +76,7 @@ def init_AXCP_settings(self, settings):
         self.quality = 3
     
     self.refreshrate = self.settings["refreshrate"]
+    self.spindown_detect_rt = self.settings["spindown_detect_rt"]
 
 
 
@@ -170,46 +172,63 @@ def initialize_AXCP_vars(self):
     
 def init_filters(self):
     
-    self.bxinlp,self.axinlp = signal.butter(4,3000/self.fnyq0, btype='lowpass',output='ba')  # low pass before first subsampling
+    
+    self.sosxinlp = signal.butter(4,3000/self.fnyq0, btype='lowpass',output='sos')  # low pass before first subsampling
     
     #bandpasses for compass coil, EF (velocity), and temperature bands
     ccband = np.array([2000,2500])/self.fnyq1
     efband = np.array([1000,1500])/self.fnyq1
     tband = np.array([250,500])/self.fnyq1
-    self.bxccbp,self.axccbp = signal.butter(4,ccband, btype='bandpass',output='ba') # (rotation)
-    self.bxefbp,self.axefbp = signal.butter(4,efband, btype='bandpass',output='ba') # (current magnitude)
-    self.bxtebp,self.axtebp = signal.butter(4,tband, btype='bandpass',output='ba') # (temperature)
+    self.sosxccbp = signal.butter(4,ccband, btype='bandpass',output='sos') # (rotation)
+    self.sosxefbp = signal.butter(4,efband, btype='bandpass',output='sos') # (current magnitude)
+    self.sosxtebp = signal.butter(4,tband, btype='bandpass',output='sos') # (temperature)
     
-    self.bfzclp,self.afzclp = signal.butter(4,self.fzclp/self.fnyq1, btype='lowpass',output='ba') # low pass zero crossing pulses
-    self.benvxcclp,self.aenvxcclp = signal.butter(2,1/self.fnyq1, btype='lowpass',output='ba') #nyquist frequency low pass filter for subsampling first round
+    self.sosfzclp = signal.butter(4,self.fzclp/self.fnyq1, btype='lowpass',output='sos') # low pass zero crossing pulses
+    self.sosenvxcclp = signal.butter(2,1/self.fnyq1, btype='lowpass',output='sos') #nyquist frequency low pass filter for subsampling first round
     
     cc2band = np.array([2,20])/self.fnyq2
-    self.bfccbp,self.afccbp = signal.butter(2,cc2band, btype='bandpass',output='ba') #bandpass filter for fcc
-    self.benvfcclp,self.aenvfcclp = signal.butter(2,1/self.fnyq2, btype='lowpass',output='ba') #lowpass pilter for fcc (fN)
-    self.bfrotlp,self.afrotlp = signal.butter(2,0.5/self.fnyq2, btype='lowpass',output='ba') #lowpass filter for rotation frequency
+    self.sosfccbp = signal.butter(2,cc2band, btype='bandpass',output='sos') #bandpass filter for fcc
+    self.sosenvfcclp = signal.butter(2,1/self.fnyq2, btype='lowpass',output='sos') #lowpass pilter for fcc (fN)
+    self.sosfrotlp = signal.butter(2,0.5/self.fnyq2, btype='lowpass',output='sos') #lowpass filter for rotation frequency
     
     frot2band = np.array([0.1,1.0])/self.fnyq2
-    self.bfrotbp,self.afrotbp = signal.butter(2,frot2band, btype='bandpass',output='ba') #bandpass filter for rotation frequency
-    self.benvfrotlp,self.aenvfrotlp = signal.butter(2,0.05/self.fnyq2, btype='lowpass',output='ba') 
+    self.sosfrotbp = signal.butter(2,frot2band, btype='bandpass',output='sos') #bandpass filter for rotation frequency
+    self.sosenvfrotlp = signal.butter(2,0.05/self.fnyq2, btype='lowpass',output='sos') 
     
     #z indices
-    self.zxinlp = np.zeros(len(self.bxinlp)-1)
+    self.zxinlp = np.zeros((self.sosxinlp.shape[0], 2))
     
-    self.zxccbp = np.zeros(len(self.bxccbp)-1)
-    self.zxefbp = np.zeros(len(self.bxefbp)-1)
-    self.zxtebp = np.zeros(len(self.bxtebp)-1)
+    self.zxccbp = np.zeros((self.sosxccbp.shape[0], 2))
+    self.zxefbp = np.zeros((self.sosxefbp.shape[0], 2))
+    self.zxtebp = np.zeros((self.sosxtebp.shape[0], 2))
     
-    self.zfcclp = np.zeros(len(self.bfzclp)-1)
-    self.zfeflp = np.zeros(len(self.bfzclp)-1)
-    self.zftelp = np.zeros(len(self.bfzclp)-1)
+    self.zfcclp = np.zeros((self.sosfzclp.shape[0], 2))
+    self.zfeflp = np.zeros((self.sosfzclp.shape[0], 2))
+    self.zftelp = np.zeros((self.sosfzclp.shape[0], 2))
     
-    self.zenvxcclp = np.zeros(len(self.benvxcclp)-1)
+    self.zenvxcclp = np.zeros((self.sosenvxcclp.shape[0], 2))
     
-    self.zfccbp = np.zeros(len(self.bfccbp)-1)
-    self.zenvfcclp = np.zeros(len(self.benvfcclp)-1)
-    self.zfrotlp = np.zeros(len(self.bfrotlp)-1)
-    self.zfrotbp = np.zeros(len(self.bfrotbp)-1)
-    self.zenvfrotlp = np.zeros(len(self.benvfrotlp)-1)
+    self.zfccbp = np.zeros((self.sosfccbp.shape[0], 2))
+    self.zenvfcclp = np.zeros((self.sosenvfcclp.shape[0], 2))
+    self.zfrotlp = np.zeros((self.sosfrotlp.shape[0], 2))
+    self.zfrotbp = np.zeros((self.sosfrotbp.shape[0], 2))
+    self.zenvfrotlp = np.zeros((self.sosenvfrotlp.shape[0], 2))
+    
+    # self.zxccbp = np.zeros(len(self.bxccbp)-1)
+    # self.zxefbp = np.zeros(len(self.bxefbp)-1)
+    # self.zxtebp = np.zeros(len(self.bxtebp)-1)
+    
+    # self.zfcclp = np.zeros(len(self.bfzclp)-1)
+    # self.zfeflp = np.zeros(len(self.bfzclp)-1)
+    # self.zftelp = np.zeros(len(self.bfzclp)-1)
+    
+    # self.zenvxcclp = np.zeros(len(self.benvxcclp)-1)
+    
+    # self.zfccbp = np.zeros(len(self.bfccbp)-1)
+    # self.zenvfcclp = np.zeros(len(self.benvfcclp)-1)
+    # self.zfrotlp = np.zeros(len(self.bfrotlp)-1)
+    # self.zfrotbp = np.zeros(len(self.bfrotbp)-1)
+    # self.zenvfrotlp = np.zeros(len(self.benvfrotlp)-1)
     
     
     
@@ -266,12 +285,12 @@ def first_subsample(self, xinlp):
     xinlp = xinlp[self.nss1-1::self.nss1]
     
     # band pass filter to get just the three carrier frequencies
-    xccbp,self.zxccbp = signal.lfilter(self.bxccbp,self.axccbp,xinlp,zi=self.zxccbp)
-    xefbp,self.zxefbp = signal.lfilter(self.bxefbp,self.axefbp,xinlp,zi=self.zxefbp)
-    xtebp,self.zxtebp = signal.lfilter(self.bxtebp,self.axtebp,xinlp,zi=self.zxtebp)
+    xccbp,self.zxccbp = signal.sosfilt(self.sosxccbp,xinlp,zi=self.zxccbp)
+    xefbp,self.zxefbp = signal.sosfilt(self.sosxefbp,xinlp,zi=self.zxefbp)
+    xtebp,self.zxtebp = signal.sosfilt(self.sosxtebp,xinlp,zi=self.zxtebp)
     
     # envelope detect xccbp
-    envxcclp,self.zenvxcclp = signal.lfilter(self.benvxcclp,self.aenvxcclp,np.abs(xccbp),zi=self.zenvxcclp)
+    envxcclp,self.zenvxcclp = signal.sosfilt(self.sosenvxcclp,np.abs(xccbp),zi=self.zenvxcclp)
     
     
     ###  compass coil frequency
@@ -283,7 +302,7 @@ def first_subsample(self, xinlp):
     xccbpzcp = np.abs(np.diff(r)) # zero crossing pulses
     
     # low pass zero crossing pulses to obtain fcc, freq of CC on wire
-    fcclp,self.zfcclp = signal.lfilter(self.bfzclp,self.afzclp,xccbpzcp,zi=self.zfcclp) 
+    fcclp,self.zfcclp = signal.sosfilt(self.sosfzclp,xccbpzcp,zi=self.zfcclp) 
     
     
     ###  EF (velocity) frequency 
@@ -295,7 +314,7 @@ def first_subsample(self, xinlp):
     xefbpzcp = np.abs(np.diff(r))  # zero crossing pulses
     
     # low pass zero crossing pulses to obtain fef, freq of EF on wire
-    feflp,self.zfeflp = signal.lfilter(self.bfzclp,self.afzclp,xefbpzcp,zi=self.zfeflp) 
+    feflp,self.zfeflp = signal.sosfilt(self.sosfzclp,xefbpzcp,zi=self.zfeflp) 
     
     
     #### temperature frequency
@@ -307,7 +326,7 @@ def first_subsample(self, xinlp):
     xtebpzcp = np.abs(np.diff(r))  # zero crossing pulses
     
     # low pass zero crossing pulses to obtain fte, freq of Temp on wire
-    ftelp,self.zftelp = signal.lfilter(self.bfzclp,self.afzclp,xtebpzcp,zi=self.zftelp) 
+    ftelp,self.zftelp = signal.sosfilt(self.sosfzclp,xtebpzcp,zi=self.zftelp) 
     
     return envxcclp, fcclp, feflp, ftelp
     
@@ -329,10 +348,10 @@ def second_subsample(self, pklp, envxcclp, fcclp, feflp, ftelp):
     tim_cur = np.linspace(self.T[-1]-(n2-1)*dt_subsample, self.T[-1], n2)
     
     # band pass fcc for two rotation detection methods below
-    fccbp,self.zfccbp = signal.lfilter(self.bfccbp,self.afccbp,fcc_cur,zi=self.zfccbp)
+    fccbp,self.zfccbp = signal.sosfilt(self.sosfccbp,fcc_cur,zi=self.zfccbp)
     
     # envelope detect fccbp
-    envfcclp,self.zenvfcclp = signal.lfilter(self.benvfcclp,self.aenvfcclp,np.abs(fccbp),zi=self.zenvfcclp)
+    envfcclp,self.zenvfcclp = signal.sosfilt(self.sosenvfcclp,np.abs(fccbp),zi=self.zenvfcclp)
     
     # hard limit fccbp in prep to get frotlp
     fccbpendprev = self.fccbpendkeep
@@ -343,14 +362,14 @@ def second_subsample(self, pklp, envxcclp, fcclp, feflp, ftelp):
     fccbpzcp = np.abs(np.diff(r))
     
     # low pass signal.lfilter zero crossing pulses to estimate rotation frequency
-    frotlp,self.zfrotlp = signal.lfilter(self.bfrotlp,self.afrotlp,fccbpzcp,zi=self.zfrotlp)
+    frotlp,self.zfrotlp = signal.sosfilt(self.sosfrotlp,fccbpzcp,zi=self.zfrotlp)
     frotlp = frotlp * 0.5 * self.fnyq2
     
     # get variability of frot bandpass then envelope detect
-    frotbp,self.zfrotbp = signal.lfilter(self.bfrotbp,self.afrotbp,frotlp,zi=self.zfrotbp)
+    frotbp,self.zfrotbp = signal.sosfilt(self.sosfrotbp,frotlp,zi=self.zfrotbp)
     
     # envelope detect frot, quiet frotdev means probe rotation rate is steady
-    envfrotlp,self.zenvfrotlp = signal.lfilter(self.benvfrotlp,self.aenvfrotlp,np.abs(frotbp),zi=self.zenvfrotlp)
+    envfrotlp,self.zenvfrotlp = signal.sosfilt(self.sosenvfrotlp,np.abs(frotbp),zi=self.zenvfrotlp)
     
     return pk_cur, envxcc_cur, fcc_cur, fef_cur, fte_cur, tim_cur, envfcclp, frotlp, envfrotlp
     
@@ -449,7 +468,7 @@ def calc_current_datapoint(self, t1, t2):
     if nfit > len(phase)/2:
         aprxcc = np.stack([np.cos(phase[j]), np.sin(phase[j]), np.ones(len(j))])
         coefcc, rescc,_,_ = np.linalg.lstsq(aprxcc.T, fcss[j]) #coefcc = aprxcc \ fcss(j)
-        # rescc = fcss[j] - aprxcc * coefcc
+        rescc = fcss[j] - np.matmul(aprxcc.T, coefcc) # rescc = fcss[j] - aprxcc * coefcc
         fccr = np.nanstd(rescc)
         fcca = np.sqrt(coefcc[0]**2+coefcc[1]**2)
         fccp = np.arctan2(-coefcc[1],coefcc[0])
@@ -457,7 +476,7 @@ def calc_current_datapoint(self, t1, t2):
         
         aprxef = np.append(aprxcc, np.array([np.linspace(-1,1,len(j))]), axis=0) #aprxef = [aprxcc,  linspace(-1,1,length(j))']
         coefef, resef,_,_ = np.linalg.lstsq(aprxef.T, fess[j]) #coefef = aprxef \ fess(j)'
-        # resef = fess[j] - aprxef * coefef
+        resef = fess[j] - np.matmul(aprxef.T, coefef) # resef = fess[j] - aprxef * coefef
         fefr = np.nanstd(resef)
         fefa = np.sqrt(coefef[0]**2+coefef[1]**2)
         fefp = np.arctan2(-coefef[1],coefef[0])
@@ -532,7 +551,7 @@ def iterate_AXCP_process(self, e):
     self.T = np.append(self.T, e/self.f_s) #time at end of current PCM chunk
     self.PK = np.append(self.PK, np.max(np.abs(self.demod_buffer))) #peak audio value
     
-    xinlp, self.zxinlp = signal.lfilter(self.bxinlp, self.axinlp, self.demod_buffer, zi=self.zxinlp) #lowpass filter input buffer
+    xinlp, self.zxinlp = signal.sosfilt(self.sosxinlp, self.demod_buffer, zi=self.zxinlp) #lowpass filter input buffer
     
     #running first subsample, applying filters, pulling big three frequency band zerocrossing points
     envxcclp, fcclp, feflp, ftelp = self.first_subsample(xinlp)
@@ -549,8 +568,14 @@ def iterate_AXCP_process(self, e):
     self.FROTDEV = np.append(self.FROTDEV, envfrotlp[-1]*np.sqrt(2) )
     
     
-    #only retain last 40 points from previous iteration, append on new values
-    retainind = -40 #last 40 points
+    #only retain last 40 seconds from previous iterations, append on new values
+    time_save = -40 #last 40 seconds retained
+    retainind = np.where(self.tim > tim_cur[-1] - time_save)[0]
+    if len(retainind) > 0:
+        retainind = retainind[0]
+    else:
+        retainind = 0
+    
     self.pk = np.append(self.pk[retainind:], pk_cur)
     self.envxcc = np.append(self.envxcc[retainind:], envxcc_cur)
     self.fcc = np.append(self.fcc[retainind:], fcc_cur)
@@ -558,11 +583,20 @@ def iterate_AXCP_process(self, e):
     self.fte = np.append(self.fte[retainind:], fte_cur)
     self.tim = np.append(self.tim[retainind:], tim_cur)
     
+    #realtime spindown detection- avoid processing unnecessary data
+    #finds last point where rotation frequency is 12-18 Hz and rotation RMS < 0.5j
+    #checked before spinup check to avoid spinup/down detection on the same iteration for large chunk sizes
+    if self.spindown_detect_rt and self.status and np.max(self.FROTLP[-10:]) >= 18 and np.min(self.FROTLP[-10:]) <= 12 and np.min(self.FROTDEV[-10:]) > 1:
+        self.status = 0 #spun down
+        self.keepgoing = False #stop processing new data, run spindown checks
+        print(f"[+] Spindown (realtime) detected: {self.T[-1]:7.2f} seconds, cleaning up!")
+    
     
     #checking to see if probe has spunup (update status to 1 if so)
     #requirements: time >= 5 seconds, rotation frequency deviation below 0.5 (steady state), rotation frequency between 10 and 20 Hz
     #precise spinup time is defined as achieving 8 Hz, half rotation rate of average 16 Hz spin
-    if not self.status and self.T[-1] >= 5 and self.FROTDEV[-1] <= 0.5 and 10 < self.FROTLP[-1] < 20:
+    #added self.tspinup requirement so it won't re spin up profiles that have been spun down by the realtime detector
+    if not self.status and self.T[-1] >= 5 and self.FROTDEV[-1] <= 0.5 and 10 < self.FROTLP[-1] < 20 and self.tspinup < 0:
         
         self.status = 1 #noting profile has spun up,  finding precise spinup time
         
@@ -581,7 +615,7 @@ def iterate_AXCP_process(self, e):
         spinup_ind = np.where(rotf_zc < 8)[0]
         if len(spinup_ind) > 0:
             try:
-                self.tspinup = tim_zc[spinup_ind + 2]
+                self.tspinup = tim_zc[spinup_ind[-1] + 2]
             except IndexError:
                 self.tspinup = tim_zc[-1]
         else:
@@ -674,15 +708,16 @@ def refine_spindown_prof(self):
     self.ENVCC = np.asarray(self.ENVCC[:nffspindown])
     self.ENVCCRMS = np.asarray(self.ENVCCRMS[:nffspindown])
     self.PEAK = np.asarray(self.PEAK[:nffspindown])
+
     
     #updating AMEAN calculation
-    # good_areas = [carea for carea,caerr in zip(self.AREA,self.AERR) if np.isfinite(carea) and caerr<5]
-    # if len(good_areas) >= 10:
-    #     inset = int(np.ceil(0.1 * len(good_areas))) #ignore outer +/- 10% of areas
-    #     self.amean_calc = np.nanmean(good_areas[inset:-inset])
+    good_areas = np.sort(self.AREA[np.where((np.isfinite(self.AREA)) & (self.AERR < 5))[0]])
+    if len(good_areas) >= 10:
+        inset = int(np.ceil(0.1 * len(good_areas))) #ignore outer +/- 10% of areas in distribution
+        self.amean_calc = np.nanmean(good_areas[inset:-inset])
         
-    #     #updating profile meridional current velocities
-    #     self.V_MAG = self.V_MAG - self.sfw * self.W * self.AREA * (1/self.amean_rough - 1/self.amean_calc)
+        #updating profile meridional current velocities
+        self.V_MAG = self.V_MAG - self.sfw * self.W * self.AREA * (1/self.amean_rough - 1/self.amean_calc)
         
     
     
