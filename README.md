@@ -1,5 +1,7 @@
 # **AXCP Processor**
 
+#THIS CODE IS STILL IN DEVELOPMENT AND NOT YET READY FOR USE- CHECK BACK SOON :)
+
 ## Overview
 The AXCP Processor can reprocess AXCP audio (WAV) files via command line, outputting a file containing AXCP signal data (signal level, peak frequency) and observed temperature versus depth. 
 
